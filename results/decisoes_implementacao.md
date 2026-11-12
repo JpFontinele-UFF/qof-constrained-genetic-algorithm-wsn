@@ -59,3 +59,22 @@ especificação (se houver) ficam em `results/ajustes.md`, não aqui.
     dos pais. A população tem sempre 64 regras.
 17. **Sorteios do controlador.** Ações iniciais, escolha da regra, desempates,
     ilha da evolução, corte, mutação e slot substituído usam o `rng_ctrl`.
+
+## Ciclo do controlador, AbI e AbII (Fase 3)
+
+18. **Primeiro checkpoint (t = 0).** Não há regra anterior para avaliar nem
+    Ef_{−1}: usa-se ΔEf = 0, o que leva à ilha 0 ("caiu/igual", nível 0). A
+    partir de t = 1, a regra aplicada em t−1 é avaliada normalmente.
+19. **Ordem das operações no checkpoint t:** (1) avaliar e premiar a regra de
+    t−1; (2) condição a partir de ΔEf; (3) sortear a regra da ilha; (4) cobrar a
+    regra e aplicar a ação na PE (limitada a [PE_MIN, 1]); (5) evoluir, se for o
+    caso. Como a evolução vem depois da escolha, a regra escolhida em t pode ser
+    substituída pelo filho; nesse caso, o prêmio de t+1 vai para o slot (que já
+    contém o filho).
+20. **Momento da evolução.** Nos checkpoints t = 1, 3, 5, … (t % 2 == 1), ou
+    seja, uma evolução a cada 2 checkpoints, 50 por execução.
+21. **Critério da AbII com QoF_t = QoF_MIN.** Conta como "acima do limiar"
+    (`QoF_t >= QoF_MIN`), e o sucesso é julgado pela Ef. Empate (Ef_t = Ef_{t−1}
+    ou QoF_t = QoF_{t−1}) não é sucesso.
+22. **Ação aplicada.** Na AbI e na AbII, a ação aplicada é a da regra; quando a
+    PE é limitada em PE_MIN ou 1, a variação efetiva fica menor que a da regra.

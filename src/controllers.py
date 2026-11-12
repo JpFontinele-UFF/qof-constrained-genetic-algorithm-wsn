@@ -1,12 +1,10 @@
-"""Controladores da PE executados no nó coordenador (CLAUDE.md, seções 4–5).
-
-Fase 1: só a interface e o PE100 (sem controle).
-"""
+"""Controladores da PE executados no nó coordenador (CLAUDE.md, seções 4–5)."""
 from __future__ import annotations
 
 import numpy as np
 
-from .config import SimConfig
+from .classifier import ClassifierSystem, condition_from_delta
+from .config import GAConfig, SimConfig
 
 
 class Controller:
@@ -65,3 +63,96 @@ class FixedPE(Controller):
         self.last_info = {"dpe_rule": 0.0, "dpe_applied": 0.0,
                           "repaired": False, "repair_active": False}
         return self.pe
+
+
+class GAController(Controller):
+    """Sistema classificador + AG original (seção 4), com critério de sucesso plugável.
+
+    Ciclo a cada checkpoint t (chamada de update com Ef_t e QoF_t):
+      1. avalia a regra aplicada em t−1 e, se bem-sucedida, ela recebe o banco;
+      2. condição/ilha a partir de ΔEf = Ef_t − Ef_{t−1} (em t = 0, ΔEf = 0);
+      3. sorteia uma regra da ilha (uniforme);
+      4. cobra a regra, aplica a ação na PE (passando pelo hook `adjust_action`);
+      5. a cada EVOL_PERIOD checkpoints (t % 2 == 1), executa uma evolução.
+    """
+
+    name = "GA"
+
+    def __init__(self, ga_cfg: GAConfig | None = None):
+        self.ga_cfg = ga_cfg or GAConfig()
+
+    def reset(self, rng_ctrl, sim_cfg):
+        super().reset(rng_ctrl, sim_cfg)
+        self.cs = ClassifierSystem(rng_ctrl, self.ga_cfg)
+        self.t = 0
+        self.prev_ef: float | None = None
+        self.prev_qof: float | None = None
+        self.prev_rule: tuple[int, int] | None = None
+        self.n_rewards = 0
+        return self.pe
+
+    # -- pontos de extensão
+    def is_success(self, ef: float, qof: float) -> bool:
+        raise NotImplementedError
+
+    def adjust_action(self, dpe: float, qof: float) -> tuple[float, bool]:
+        """Ação aplicada a partir da ação da regra. Original: sem alteração."""
+        return dpe, False
+
+    def remember(self, ef: float, qof: float) -> None:
+        """Guarda as medidas de t para comparar em t+1."""
+        self.prev_ef, self.prev_qof = ef, qof
+
+    # -- ciclo
+    def update(self, ef, qof):
+        rewarded = False
+        if self.prev_rule is not None:                              # 1. avaliar
+            if self.is_success(ef, qof):
+                self.cs.reward(*self.prev_rule)
+                self.n_rewards += 1
+                rewarded = True
+        delta = 0.0 if self.prev_ef is None else ef - self.prev_ef  # 2. condição
+        island = condition_from_delta(delta, self.ga_cfg.delta_ef_step)
+        slot = self.cs.choose(island)                               # 3. escolha
+        self.cs.charge(island, slot)                                # 4. cobrança + ação
+        dpe_rule = self.cs.dpe(island, slot)
+        dpe_applied, repaired, active = self._apply(dpe_rule, qof)
+        self.pe = self.clip_pe(self.pe + dpe_applied)
+        self.prev_rule = (island, slot)
+        evolved = False
+        if self.t % self.ga_cfg.evol_period == self.ga_cfg.evol_period - 1:  # 5. evolução
+            self.cs.evolve()
+            evolved = True
+        self.remember(ef, qof)
+        self.last_info = {"island": island, "slot": slot, "dpe_rule": dpe_rule,
+                          "dpe_applied": dpe_applied, "repaired": repaired,
+                          "repair_active": active, "rewarded": rewarded,
+                          "evolved": evolved}
+        self.t += 1
+        return self.pe
+
+    def _apply(self, dpe_rule: float, qof: float) -> tuple[float, bool, bool]:
+        dpe, active = self.adjust_action(dpe_rule, qof)
+        return dpe, (dpe != dpe_rule), active
+
+
+class AbI(GAController):
+    """Abordagem I (mono-objetivo): sucesso se Ef_t > Ef_{t−1}."""
+
+    name = "AbI"
+
+    def is_success(self, ef, qof):
+        return ef > self.prev_ef
+
+
+class AbII(GAController):
+    """Abordagem II (multi-objetivo, nossa interpretação):
+    se QoF_t >= QoF_MIN, sucesso se Ef_t > Ef_{t−1}; senão, sucesso se QoF_t > QoF_{t−1}.
+    """
+
+    name = "AbII"
+
+    def is_success(self, ef, qof):
+        if qof >= self.sim_cfg.qof_min:
+            return ef > self.prev_ef
+        return qof > self.prev_qof
