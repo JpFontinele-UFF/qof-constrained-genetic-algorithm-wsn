@@ -4,7 +4,7 @@ from __future__ import annotations
 import numpy as np
 
 from .classifier import ClassifierSystem, condition_from_delta
-from .config import GAConfig, SimConfig
+from .config import C1Config, GAConfig, SimConfig
 
 
 class Controller:
@@ -156,3 +156,60 @@ class AbII(GAController):
         if qof >= self.sim_cfg.qof_min:
             return ef > self.prev_ef
         return qof > self.prev_qof
+
+
+class Proposed(AbII):
+    """AbII + C1 (seção 5): penalidade e/ou reparo, com flags independentes.
+
+    - use_penalty: sucesso se F_t > F_{t−1}, com
+      F_t = Ef_t − LAMBDA · max(0, QoF_MIN − QoF_t) / QoF_MIN (substitui o critério da AbII);
+    - use_repair: se QoF_t < QoF_MIN · (1 + MARGIN), a ação aplicada não reduz a PE;
+      se QoF_t < QoF_MIN, aplica no mínimo ΔPE = +REPAIR_STEP. O cromossomo
+      armazenado não é alterado.
+    """
+
+    def __init__(self, use_penalty: bool = True, use_repair: bool = True,
+                 c1_cfg: C1Config | None = None, ga_cfg: GAConfig | None = None):
+        super().__init__(ga_cfg)
+        self.use_penalty = use_penalty
+        self.use_repair = use_repair
+        self.c1 = c1_cfg or C1Config()
+        self.name = {(True, True): "AG-RQ", (True, False): "AbII+Pen",
+                     (False, True): "AbII+Rep", (False, False): "AbII(Proposed)"}[
+            (use_penalty, use_repair)]
+
+    def reset(self, rng_ctrl, sim_cfg):
+        pe = super().reset(rng_ctrl, sim_cfg)
+        self.prev_f: float | None = None
+        self.repairs = 0           # vezes em que o reparo mudou a ação aplicada
+        self.repair_active = 0     # vezes em que a condição de reparo estava ativa
+        return pe
+
+    def fitness(self, ef: float, qof: float) -> float:
+        qmin = self.sim_cfg.qof_min
+        return ef - self.c1.lam * max(0.0, qmin - qof) / qmin
+
+    def is_success(self, ef, qof):
+        if self.use_penalty:
+            return self.fitness(ef, qof) > self.prev_f
+        return super().is_success(ef, qof)
+
+    def remember(self, ef, qof):
+        super().remember(ef, qof)
+        self.prev_f = self.fitness(ef, qof)
+
+    def adjust_action(self, dpe, qof):
+        if not self.use_repair:
+            return dpe, False
+        qmin = self.sim_cfg.qof_min
+        if qof < qmin:
+            return max(dpe, self.c1.repair_step), True
+        if qof < qmin * (1.0 + self.c1.margin):
+            return max(dpe, 0.0), True
+        return dpe, False
+
+    def _apply(self, dpe_rule, qof):
+        dpe, repaired, active = super()._apply(dpe_rule, qof)
+        self.repairs += int(repaired)
+        self.repair_active += int(active)
+        return dpe, repaired, active

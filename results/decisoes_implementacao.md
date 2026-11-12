@@ -78,3 +78,46 @@ especificação (se houver) ficam em `results/ajustes.md`, não aqui.
     ou QoF_t = QoF_{t−1}) não é sucesso.
 22. **Ação aplicada.** Na AbI e na AbII, a ação aplicada é a da regra; quando a
     PE é limitada em PE_MIN ou 1, a variação efetiva fica menor que a da regra.
+
+### Comportamento observado: sementes presas com PE ≈ 1 (não corrigido)
+
+Em algumas sementes (na AbI com N = 100: 20, 23 e 25, com PE média entre 0,77 e
+0,99 nas sessões 10–99), a PE fica presa perto de 1. Isso decorre da própria
+especificação original e **não foi corrigido**:
+
+- com PE ≈ 1 a Ef quase não varia de uma sessão para outra (|ΔEf| < 0,025), de
+  modo que só as duas ilhas de nível 0 (condições 0 e 8) são usadas;
+- nessa região, uma regra que manda aumentar a PE não tem efeito (a PE já está no
+  limite de 1), mas é premiada em cerca de metade das vezes, só pelo ruído da Ef;
+- se a evolução eliminar as ações de redução dessas ilhas (na semente 23, a única
+  ação de redução da ilha 0 foi substituída), a PE não sai mais de perto de 1;
+- com escolha uniforme da regra e só cerca de 3 evoluções por ilha em 100 sessões,
+  o sinal de aprendizado é fraco, e o comportamento se aproxima de um passeio
+  aleatório da PE com aprendizado lento.
+
+Consequência: a dispersão entre sementes é grande (PE média da AbI por semente
+de 0,04 a 0,99), e a AbI e a AbII tomam decisões idênticas (mesma semente)
+enquanto a QoF não cai abaixo de QoF_MIN.
+
+## Contribuição C1 e oráculo (Fase 4)
+
+23. **Penalidade no primeiro checkpoint.** Como na AbII, em t = 0 não há regra a
+    avaliar; F_0 é guardado para a comparação em t = 1. Empate (F_t = F_{t−1})
+    não é sucesso.
+24. **Faixas do reparo** (Eq. 7 do artigo), avaliadas com a QoF da sessão que
+    acabou de terminar: se QoF_t < QoF_MIN, ΔPE_ap = max(ΔPE, +0,06); se
+    QoF_MIN ≤ QoF_t < 1,1·QoF_MIN, ΔPE_ap = max(ΔPE, 0); caso contrário,
+    ΔPE_ap = ΔPE. QoF_t exatamente igual a QoF_MIN cai na faixa da margem. Depois
+    do reparo, a PE ainda é limitada a [PE_MIN, 1].
+25. **Contagem de reparos (`repairs`).** Conta as sessões em que o reparo mudou a
+    ação aplicada (ΔPE_ap ≠ ΔPE da regra). À parte, registra-se `repair_active`:
+    sessões em que a QoF estava numa das duas faixas do reparo, mesmo que a regra
+    já mandasse aumentar a PE.
+26. **Reparo e aprendizado.** O reparo altera só a ação aplicada. A regra
+    escolhida paga ao banco normalmente e é avaliada na sessão seguinte pelo
+    critério do método, mesmo que sua ação tenha sido trocada pelo reparo.
+27. **Oráculo.** Usa o modelo sem interferência e o número esperado de
+    transmissores k = N·PE (desigualdade de Jensen ignorada). Como o canal real
+    tem 10% de sessões com interferência, a Ef* é um limite de referência, não
+    exatamente alcançável. Com QoF_MIN fixo e problema viável, k* e Ef* não
+    dependem de N (Ef* ≈ 0,484 para QoF_MIN = 12).
