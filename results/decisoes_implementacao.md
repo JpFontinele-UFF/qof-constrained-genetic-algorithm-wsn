@@ -121,3 +121,37 @@ enquanto a QoF não cai abaixo de QoF_MIN.
     tem 10% de sessões com interferência, a Ef* é um limite de referência, não
     exatamente alcançável. Com QoF_MIN fixo e problema viável, k* e Ef* não
     dependem de N (Ef* ≈ 0,484 para QoF_MIN = 12).
+
+## Métricas, experimentos e saídas (Fase 5)
+
+28. **Janela das métricas.** Sessões 10–99 (as sessões 0–9 são aquecimento). No
+    E5 também se reportam os trechos 10–49 (antes), 50–99 (depois) e 50–59
+    (transição logo após a entrada dos 100 sensores).
+29. **pe_std e pe_reversals.** `pe_std` é o desvio padrão populacional da PE usada
+    nas sessões da janela. `pe_reversals` conta as trocas de sinal entre variações
+    efetivas consecutivas e não nulas da PE (PE_{t+1} − PE_t, já com o limite
+    [PE_MIN, 1]); sessões sem variação são ignoradas.
+30. **Gap ao oráculo.** `(Ef* − ef_mean)/Ef*`, com Ef* do modelo sem
+    interferência e QoF_MIN do cenário; em E5, média do Ef* por sessão (igual nos
+    dois trechos, pois k* não depende de N). O gap pode ser **negativo** quando o
+    método viola muito a restrição: ele obtém Ef acima do Ef*, que é o máximo
+    *sujeito a* QoF ≥ QoF_MIN (ex.: AbII com N = 25).
+31. **Tabelas "média (desvio)".** Média e desvio padrão amostral (ddof = 1) entre
+    as 30 sementes das métricas por execução.
+32. **Wilcoxon.** `scipy.stats.wilcoxon` pareado por semente, bicaudal, opções
+    padrão (diferenças nulas descartadas, `zero_method="wilcox"`). Se todas as
+    diferenças forem nulas, reporta-se p = 1. Sem correção para comparações
+    múltiplas (3 variantes × 8 métricas); o nível de 5% vale por comparação.
+33. **E1.** A tabela de validação traz o PE100 sem interferência (verificação da
+    calibração pela Tabela A.2) e com interferência (cenário usado nos demais
+    experimentos). A AbI (N = 100) aparece em `e1_abi_trechos` e na figura extra
+    `validacao_abi.png`.
+34. **Tabelas LaTeX.** Geradas por uma função própria em booktabs
+    (`\toprule/\midrule/\bottomrule`), porque `DataFrame.to_latex` exige o
+    jinja2, que não está entre as dependências permitidas. Os números usam
+    vírgula decimal (`0{,}248`); os CSVs usam ponto.
+35. **Figuras.** Cada método tem cor fixa em todas as figuras; linha tracejada =
+    QoF_MIN; traço-ponto = referências do oráculo (PE*, Ef*); faixa sombreada
+    cinza = sessões de aquecimento; faixas coloridas = ±1 desvio entre sementes.
+    Em E3/E4 os pontos dos dois métodos são levemente deslocados no eixo x para
+    as barras de erro não se sobreporem.
